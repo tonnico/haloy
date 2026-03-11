@@ -306,7 +306,12 @@ func normalizeTargetConfig(tc *config.TargetConfig) {
 	}
 
 	if tc.Image.Repository == "" {
+		// A partial image block without an explicit repository should inherit the
+		// same local-build defaults as an omitted image field.
 		tc.Image.Repository = tc.Name
+		if tc.Image.Build == nil && tc.Image.BuildConfig == nil {
+			tc.Image.Build = helpers.Ptr(true)
+		}
 	}
 
 	if tc.Image.Repository == tc.Name &&
@@ -319,6 +324,13 @@ func normalizeTargetConfig(tc *config.TargetConfig) {
 		tc.Image.History = &config.ImageHistory{
 			Strategy: config.HistoryStrategyLocal,
 			Count:    helpers.Ptr(int(constants.DefaultDeploymentsToKeep)),
+		}
+	} else {
+		if tc.Image.History.Strategy == "" {
+			tc.Image.History.Strategy = config.HistoryStrategyLocal
+		}
+		if tc.Image.History.Strategy == config.HistoryStrategyLocal && tc.Image.History.Count == nil {
+			tc.Image.History.Count = helpers.Ptr(int(constants.DefaultDeploymentsToKeep))
 		}
 	}
 

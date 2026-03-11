@@ -40,6 +40,7 @@ func TestMergeToTarget(t *testing.T) {
 		expectedName    string
 		expectedServer  string
 		expectedImage   config.Image
+		expectedBuild   *bool
 		expectedEnv     []config.EnvVar
 		expectNilTarget bool
 	}{
@@ -129,6 +130,7 @@ func TestMergeToTarget(t *testing.T) {
 					Pattern:  "v*",
 				},
 			},
+			expectedBuild: helpers.Ptr(false),
 		},
 		{
 			name:         "override with registry auth",
@@ -425,6 +427,7 @@ func TestMergeToTarget(t *testing.T) {
 			expectedImage: config.Image{
 				Repository: "my-service",
 			},
+			expectedBuild: helpers.Ptr(true),
 		},
 		{
 			name:         "partial image with only tag defaults repository to target name",
@@ -441,6 +444,73 @@ func TestMergeToTarget(t *testing.T) {
 				Repository: "my-app",
 				Tag:        "v2.0",
 			},
+			expectedBuild: helpers.Ptr(true),
+		},
+		{
+			name:         "partial image with only history defaults repository to target name and keeps local build",
+			deployConfig: config.DeployConfig{},
+			targetConfig: config.TargetConfig{
+				Image: &config.Image{
+					History: &config.ImageHistory{
+						Strategy: config.HistoryStrategyNone,
+					},
+				},
+			},
+			targetName:     "my-app",
+			expectedName:   "my-app",
+			expectedServer: "localhost",
+			expectedImage: config.Image{
+				Repository: "my-app",
+				History: &config.ImageHistory{
+					Strategy: config.HistoryStrategyNone,
+				},
+			},
+			expectedBuild: helpers.Ptr(true),
+		},
+		{
+			name:         "partial image history count overrides default local history and keeps local build",
+			deployConfig: config.DeployConfig{},
+			targetConfig: config.TargetConfig{
+				Image: &config.Image{
+					History: &config.ImageHistory{
+						Count: helpers.Ptr(3),
+					},
+				},
+			},
+			targetName:     "my-app",
+			expectedName:   "my-app",
+			expectedServer: "localhost",
+			expectedImage: config.Image{
+				Repository: "my-app",
+				History: &config.ImageHistory{
+					Strategy: config.HistoryStrategyLocal,
+					Count:    helpers.Ptr(3),
+				},
+			},
+			expectedBuild: helpers.Ptr(true),
+		},
+		{
+			name: "base partial image with only history defaults repository to target name and keeps local build",
+			deployConfig: config.DeployConfig{
+				TargetConfig: config.TargetConfig{
+					Image: &config.Image{
+						History: &config.ImageHistory{
+							Strategy: config.HistoryStrategyNone,
+						},
+					},
+				},
+			},
+			targetConfig:   config.TargetConfig{},
+			targetName:     "my-app",
+			expectedName:   "my-app",
+			expectedServer: "localhost",
+			expectedImage: config.Image{
+				Repository: "my-app",
+				History: &config.ImageHistory{
+					Strategy: config.HistoryStrategyNone,
+				},
+			},
+			expectedBuild: helpers.Ptr(true),
 		},
 	}
 
@@ -472,6 +542,10 @@ func TestMergeToTarget(t *testing.T) {
 					t.Errorf("MergeToTarget() Image.Tag = %s, expected %s",
 						result.Image.Tag, tt.expectedImage.Tag)
 				}
+				if tt.expectedBuild != nil && result.Image.ShouldBuild() != *tt.expectedBuild {
+					t.Errorf("MergeToTarget() Image.ShouldBuild() = %t, expected %t",
+						result.Image.ShouldBuild(), *tt.expectedBuild)
+				}
 				if tt.expectedImage.History != nil {
 					if result.Image.History == nil {
 						t.Errorf("MergeToTarget() Image.History should not be nil")
@@ -479,6 +553,18 @@ func TestMergeToTarget(t *testing.T) {
 						if result.Image.History.Strategy != tt.expectedImage.History.Strategy {
 							t.Errorf("MergeToTarget() Image.History.Strategy = %s, expected %s",
 								result.Image.History.Strategy, tt.expectedImage.History.Strategy)
+						}
+						if tt.expectedImage.History.Count != nil {
+							if result.Image.History.Count == nil {
+								t.Errorf("MergeToTarget() Image.History.Count should not be nil")
+							} else if *result.Image.History.Count != *tt.expectedImage.History.Count {
+								t.Errorf("MergeToTarget() Image.History.Count = %d, expected %d",
+									*result.Image.History.Count, *tt.expectedImage.History.Count)
+							}
+						}
+						if result.Image.History.Pattern != tt.expectedImage.History.Pattern {
+							t.Errorf("MergeToTarget() Image.History.Pattern = %s, expected %s",
+								result.Image.History.Pattern, tt.expectedImage.History.Pattern)
 						}
 					}
 				}
