@@ -168,22 +168,22 @@ func UploadImage(ctx context.Context, imageRef string, resolvedTargetConfigs []*
 				ui.Warn("Layer-based push failed, falling back to full push: %v", err)
 				if supportsImagePreflight {
 					if err := reportFullUploadDiskSpace(ctx, api, uint64(tempInfo.Size())); err != nil {
-						return err
+						return withImagePruneHint(err, *resolvedDeployConfig)
 					}
 				}
 				if err := api.PostFile(ctx, "images/upload", "image", tempFile.Name()); err != nil {
-					return fmt.Errorf("failed to upload image: %w", err)
+					return withImagePruneHint(fmt.Errorf("failed to upload image: %w", err), *resolvedDeployConfig)
 				}
 			}
 		} else {
 			ui.Info("Pushing image %s to %s", imageRef, resolvedDeployConfig.Server)
 			if supportsImagePreflight {
 				if err := reportFullUploadDiskSpace(ctx, api, uint64(tempInfo.Size())); err != nil {
-					return err
+					return withImagePruneHint(err, *resolvedDeployConfig)
 				}
 			}
 			if err := api.PostFile(ctx, "images/upload", "image", tempFile.Name()); err != nil {
-				return fmt.Errorf("failed to upload image: %w", err)
+				return withImagePruneHint(fmt.Errorf("failed to upload image: %w", err), *resolvedDeployConfig)
 			}
 		}
 	}

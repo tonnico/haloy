@@ -21,6 +21,7 @@ type APIServer struct {
 	uploadDiskSpaceCheck   func(context.Context, int64) error
 	assembleDiskSpaceCheck func(context.Context, apitypes.ImageAssembleRequest) error
 	imageDiskSpaceCheck    func(context.Context, apitypes.ImageDiskSpaceCheckRequest) (diskSpaceCheckResult, error)
+	imagePrune             func(context.Context, apitypes.ImagePruneRequest) (apitypes.ImagePruneResponse, error)
 }
 
 func NewServer(apiToken string, logBroker logging.StreamPublisher, logLevel slog.Level) *APIServer {

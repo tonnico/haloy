@@ -79,6 +79,7 @@ func NewRootCmd() *cobra.Command {
 
 	cmd.AddCommand(
 		DeployAppCmd(&resolvedConfigPath, appFlags),
+		PruneImagesCmd(&resolvedConfigPath, appFlags),
 		RollbackTargetsCmd(&resolvedConfigPath, appFlags),
 		RollbackAppCmd(&resolvedConfigPath, appFlags),
 		LogsCmd(&resolvedConfigPath, appFlags),

@@ -3,6 +3,7 @@ package docker
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -10,6 +11,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/registry"
@@ -116,6 +118,19 @@ type removableImageTag struct {
 	ImageID      string
 }
 
+type ImagePruneTag struct {
+	Tag          string
+	DeploymentID string
+	ImageID      string
+}
+
+type ImagePrunePlan struct {
+	AppName              string
+	Keep                 int
+	RunningDeploymentIDs []string
+	Tags                 []ImagePruneTag
+}
+
 func selectImageTagsToRemove(candidates []removableImageTag, inUseImageIDs map[string]struct{}, deploymentsToKeep int, ignoreDeploymentID string) []removableImageTag {
 	sort.Slice(candidates, func(i, j int) bool {
 		return candidates[i].DeploymentID > candidates[j].DeploymentID
@@ -153,19 +168,73 @@ func selectImageTagsToRemove(candidates []removableImageTag, inUseImageIDs map[s
 	return removals
 }
 
-func RemoveImages(ctx context.Context, cli *client.Client, logger *slog.Logger, appName, ignoreDeploymentID string, deploymentsToKeep int) error {
+func runningDeploymentIDs(containers []container.Summary) []string {
+	seen := make(map[string]struct{})
+	var deploymentIDs []string
+	for _, containerInfo := range containers {
+		deploymentID := containerInfo.Labels[config.LabelDeploymentID]
+		if deploymentID == "" {
+			continue
+		}
+		if _, exists := seen[deploymentID]; exists {
+			continue
+		}
+		seen[deploymentID] = struct{}{}
+		deploymentIDs = append(deploymentIDs, deploymentID)
+	}
+
+	sort.Sort(sort.Reverse(sort.StringSlice(deploymentIDs)))
+	return deploymentIDs
+}
+
+func planImagePrune(
+	candidates []removableImageTag,
+	inUseImageIDs map[string]struct{},
+	appName,
+	ignoreDeploymentID string,
+	deploymentsToKeep int,
+	runningIDs []string,
+) ImagePrunePlan {
+	removals := selectImageTagsToRemove(candidates, inUseImageIDs, deploymentsToKeep, ignoreDeploymentID)
+	sort.Slice(removals, func(i, j int) bool {
+		return removals[i].DeploymentID > removals[j].DeploymentID
+	})
+
+	plan := ImagePrunePlan{
+		AppName:              appName,
+		Keep:                 deploymentsToKeep,
+		RunningDeploymentIDs: runningIDs,
+		Tags:                 make([]ImagePruneTag, 0, len(removals)),
+	}
+
+	for _, removal := range removals {
+		plan.Tags = append(plan.Tags, ImagePruneTag{
+			Tag:          removal.Tag,
+			DeploymentID: removal.DeploymentID,
+			ImageID:      removal.ImageID,
+		})
+	}
+
+	return plan
+}
+
+func PlanImagePrune(ctx context.Context, cli *client.Client, appName, ignoreDeploymentID string, deploymentsToKeep int) (ImagePrunePlan, error) {
+	if deploymentsToKeep < 0 {
+		return ImagePrunePlan{}, fmt.Errorf("deployments to keep must be at least 0")
+	}
+
 	// List all images for the app that match the format appName:<deploymentID>.
 	images, err := cli.ImageList(ctx, image.ListOptions{
 		Filters: filters.NewArgs(filters.Arg("reference", appName+":*")),
 	})
 	if err != nil {
-		return fmt.Errorf("failed to list images for %s: %w", appName, err)
+		return ImagePrunePlan{}, fmt.Errorf("failed to list images for %s: %w", appName, err)
 	}
 
 	// Get a list of running containers for the app to determine which image digests are currently in use.
 	containerList, err := GetAppContainers(ctx, cli, false, appName)
 	if err != nil {
-		return err
+		return ImagePrunePlan{}, err
 	}
 	// Build a set of imageIDs that are in use.
 	inUseImageIDs := make(map[string]struct{})
@@ -199,15 +268,37 @@ func RemoveImages(ctx context.Context, cli *client.Client, logger *slog.Logger, 
 		}
 	}
 
-	for _, cand := range selectImageTagsToRemove(candidates, inUseImageIDs, deploymentsToKeep, ignoreDeploymentID) {
+	return planImagePrune(
+		candidates,
+		inUseImageIDs,
+		appName,
+		ignoreDeploymentID,
+		deploymentsToKeep,
+		runningDeploymentIDs(containerList),
+	), nil
+}
+
+func ExecuteImagePrunePlan(ctx context.Context, cli *client.Client, logger *slog.Logger, plan ImagePrunePlan) error {
+	var errs []error
+	for _, cand := range plan.Tags {
 		if _, err := cli.ImageRemove(ctx, cand.Tag, image.RemoveOptions{Force: true, PruneChildren: false}); err != nil {
 			logger.Error("Failed to remove image tag", "tag", cand.Tag, "error", err)
+			errs = append(errs, fmt.Errorf("%s: %w", cand.Tag, err))
 		} else {
 			logger.Debug("Removed image tag", "tag", cand.Tag)
 		}
 	}
 
-	return nil
+	return errors.Join(errs...)
+}
+
+func RemoveImages(ctx context.Context, cli *client.Client, logger *slog.Logger, appName, ignoreDeploymentID string, deploymentsToKeep int) error {
+	plan, err := PlanImagePrune(ctx, cli, appName, ignoreDeploymentID, deploymentsToKeep)
+	if err != nil {
+		return err
+	}
+
+	return ExecuteImagePrunePlan(ctx, cli, logger, plan)
 }
 
 func LoadImageFromTar(ctx context.Context, cli *client.Client, tarPath string) error {

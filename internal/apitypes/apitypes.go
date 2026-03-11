@@ -28,6 +28,25 @@ type RollbackTargetsResponse struct {
 	Targets []deploytypes.RollbackTarget `json:"targets"`
 }
 
+type ImagePruneRequest struct {
+	AppName string `json:"appName"`
+	Keep    int    `json:"keep"`
+	Apply   bool   `json:"apply,omitempty"`
+}
+
+type ImagePruneTag struct {
+	Tag          string `json:"tag"`
+	DeploymentID string `json:"deploymentId"`
+}
+
+type ImagePruneResponse struct {
+	AppName              string          `json:"appName"`
+	Keep                 int             `json:"keep"`
+	Applied              bool            `json:"applied"`
+	RunningDeploymentIDs []string        `json:"runningDeploymentIds,omitempty"`
+	Tags                 []ImagePruneTag `json:"tags"`
+}
+
 type AppStatusResponse struct {
 	State        string          `json:"state"`
 	DeploymentID string          `json:"deploymentId"`
