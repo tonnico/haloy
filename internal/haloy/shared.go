@@ -75,24 +75,23 @@ func getToken(targetConfig *config.TargetConfig, url string) (string, error) {
 		return "", err
 	}
 
-	if clientConfig == nil {
-		return "", fmt.Errorf("no client configuration found. Run: haloy server add <url> <token>")
+	if clientConfig != nil {
+		normalizedURL, err := helpers.NormalizeServerURL(url)
+		if err != nil {
+			return "", err
+		}
+
+		if serverConfig, exists := clientConfig.Servers[normalizedURL]; exists {
+			token := os.Getenv(serverConfig.TokenEnv)
+			if token != "" {
+				return token, nil
+			}
+		}
 	}
 
-	normalizedURL, err := helpers.NormalizeServerURL(url)
-	if err != nil {
-		return "", err
+	if token := os.Getenv(constants.EnvVarAPIToken); token != "" {
+		return token, nil
 	}
 
-	serverConfig, exists := clientConfig.Servers[normalizedURL]
-	if !exists {
-		return "", fmt.Errorf("server %s not configured. Run: haloy server add %s <token>", normalizedURL, normalizedURL)
-	}
-
-	token := os.Getenv(serverConfig.TokenEnv)
-	if token == "" {
-		return "", fmt.Errorf("token not found for server %s. Please set environment variable: %s", normalizedURL, serverConfig.TokenEnv)
-	}
-
-	return token, nil
+	return "", fmt.Errorf("no API token found. Either run 'haloy server add <url> <token>' or set the %s environment variable", constants.EnvVarAPIToken)
 }
