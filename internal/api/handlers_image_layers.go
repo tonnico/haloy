@@ -122,7 +122,9 @@ func (s *APIServer) handleImageAssemble() http.HandlerFunc {
 			return
 		}
 
-		if err := s.ensureAssembleDiskSpace(r.Context(), req); err != nil {
+		if err := s.ensureDiskSpaceOrPruneLayers(r.Context(), func() error {
+			return s.ensureAssembleDiskSpace(r.Context(), req)
+		}); err != nil {
 			writeImageHandlerError(w, "Failed disk space preflight", err)
 			return
 		}

@@ -22,6 +22,7 @@ import (
 	"github.com/haloydev/haloy/internal/docker"
 	"github.com/haloydev/haloy/internal/healthcheck"
 	"github.com/haloydev/haloy/internal/helpers"
+	"github.com/haloydev/haloy/internal/layerstore"
 	"github.com/haloydev/haloy/internal/logging"
 	"github.com/haloydev/haloy/internal/proxy"
 	"github.com/haloydev/haloy/internal/storage"
@@ -297,6 +298,11 @@ func Run(debug bool) {
 			_, err := docker.PruneImages(ctx, cli, logger)
 			if err != nil {
 				logger.Warn("Failed to prune images", "error", err)
+			}
+			if pruned, freed, pruneErr := layerstore.PruneUnusedLayers(ctx, logger); pruneErr != nil {
+				logger.Warn("Failed to prune unused layers", "error", pruneErr)
+			} else if pruned > 0 {
+				logger.Info("Pruned unused layers", "count", pruned, "bytes_freed", freed)
 			}
 			go func() {
 				deploymentCtx, cancelDeployment := context.WithCancel(ctx)

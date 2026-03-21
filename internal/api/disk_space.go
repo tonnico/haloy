@@ -17,6 +17,7 @@ import (
 	"github.com/haloydev/haloy/internal/docker"
 	"github.com/haloydev/haloy/internal/helpers"
 	"github.com/haloydev/haloy/internal/layerstore"
+	"github.com/haloydev/haloy/internal/logging"
 	"github.com/haloydev/haloy/internal/storage"
 	"golang.org/x/sys/unix"
 )
@@ -425,6 +426,31 @@ func digestFromLayerPath(layerPath string) (string, error) {
 	default:
 		return "sha256:" + dir, nil
 	}
+}
+
+func (s *APIServer) ensureDiskSpaceOrPruneLayers(ctx context.Context, check func() error) error {
+	err := check()
+	if err == nil {
+		return nil
+	}
+
+	var diskErr *insufficientDiskSpaceError
+	if !errors.As(err, &diskErr) {
+		return err
+	}
+
+	logger := logging.NewLogger(s.logLevel, s.logBroker)
+	pruned, freed, pruneErr := layerstore.PruneUnusedLayers(ctx, logger)
+	if pruneErr != nil {
+		logger.Warn("Failed to prune unused layers during disk recovery", "error", pruneErr)
+		return err
+	}
+	if pruned == 0 {
+		return err
+	}
+
+	logger.Info("Pruned unused layers to recover disk space", "count", pruned, "bytes_freed", freed)
+	return check()
 }
 
 func writeImageHandlerError(w http.ResponseWriter, prefix string, err error) {

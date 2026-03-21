@@ -44,6 +44,24 @@ func (s *APIServer) handleImageDiskSpaceCheck() http.HandlerFunc {
 			return
 		}
 
+		if !result.OK {
+			if err := s.ensureDiskSpaceOrPruneLayers(r.Context(), func() error {
+				return result.Err()
+			}); err == nil {
+				if s.imageDiskSpaceCheck != nil {
+					result, err = s.imageDiskSpaceCheck(r.Context(), req)
+				} else if fullUploadMode {
+					result, err = checkDiskSpaceForUpload(r.Context(), osDiskSpaceProbe{}, req.UploadSizeBytes)
+				} else {
+					result, err = checkDiskSpaceForLayeredUpload(r.Context(), osDiskSpaceProbe{}, req.LayerUploadBytes, req.AssembledImageSizeBytes)
+				}
+				if err != nil {
+					writeImageHandlerError(w, "Failed disk space preflight", err)
+					return
+				}
+			}
+		}
+
 		resp := apitypes.ImageDiskSpaceCheckResponse{
 			OK:             result.OK,
 			Path:           result.Path,

@@ -16,7 +16,9 @@ import (
 // handleImageUpload handles uploading Docker image tar files
 func (s *APIServer) handleImageUpload() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if err := s.ensureUploadDiskSpace(r.Context(), r.ContentLength); err != nil {
+		if err := s.ensureDiskSpaceOrPruneLayers(r.Context(), func() error {
+			return s.ensureUploadDiskSpace(r.Context(), r.ContentLength)
+		}); err != nil {
 			writeImageHandlerError(w, "Failed disk space preflight", err)
 			return
 		}
@@ -40,7 +42,9 @@ func (s *APIServer) handleImageUpload() http.HandlerFunc {
 			return
 		}
 
-		if err := s.ensureUploadDiskSpace(r.Context(), header.Size); err != nil {
+		if err := s.ensureDiskSpaceOrPruneLayers(r.Context(), func() error {
+			return s.ensureUploadDiskSpace(r.Context(), header.Size)
+		}); err != nil {
 			writeImageHandlerError(w, "Failed disk space preflight", err)
 			return
 		}
