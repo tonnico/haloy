@@ -111,6 +111,8 @@ That's it! Your application is now deployed and accessible at your configured do
 
 ## Development
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and contribution guidelines.
+
 Local builds can embed Git-derived version metadata:
 
 ```bash
