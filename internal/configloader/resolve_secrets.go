@@ -141,13 +141,13 @@ func groupSources(sources []*config.ValueSource, providers *config.SecretProvide
 
 		parts := strings.SplitN(vs.From.Secret, ":", 2)
 		if len(parts) != 2 {
-			return nil, fmt.Errorf("invalid secret reference format: '%s'. Expected 'provider:source_name.key'", vs.From.Secret)
+			return nil, fmt.Errorf("invalid secret reference format: '%s'. Expected 'provider:source_name:key'", vs.From.Secret)
 		}
 		provider, ref := parts[0], parts[1]
 
-		refParts := strings.SplitN(ref, ".", 2)
+		refParts := strings.SplitN(ref, ":", 2)
 		if len(refParts) != 2 {
-			return nil, fmt.Errorf("invalid secret reference format: '%s'. Expected 'source_name.key'", ref)
+			return nil, fmt.Errorf("invalid secret reference format: '%s'. Expected 'source_name:key'", ref)
 		}
 		sourceName, extractKey := refParts[0], refParts[1]
 
